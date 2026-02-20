@@ -92,6 +92,18 @@ export const llmProviders: LLMProvider[] = [
         maxTokens: 16384,
         description: 'Affordable and fast with function calling',
       },
+      {
+        id: 'gemini-3-flash',
+        name: 'Gemini 3 Flash',
+        provider: 'openai',
+        contextWindow: 128000,
+        inputCostPer1M: 0.15,
+        outputCostPer1M: 0.60,
+        supportsJSON: true,
+        supportsMCP: true,
+        maxTokens: 16384,
+        description: 'Gemini 3 Flash model via OpenAI compat API',
+      },
     ],
   },
   {

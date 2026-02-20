@@ -23,6 +23,7 @@ export const SUPPORTED_MODELS = {
     // OpenAI models that support Responses API
     'gpt-4o',
     'gpt-4o-mini',
+    'gemini-3-flash',
   ],
   anthropic: [
     // Claude 4 models that support Messages API with MCP

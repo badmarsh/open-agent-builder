@@ -170,6 +170,8 @@ export default defineSchema({
     // Metadata
     label: v.optional(v.string()), // User-friendly label
     isActive: v.boolean(), // Whether this key is currently active
+    baseUrl: v.optional(v.string()), // Custom base URL for the provider
+    modelName: v.optional(v.string()), // Custom model name to use
 
     // Timestamps
     createdAt: v.string(),

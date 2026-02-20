@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import React, { useState, useEffect } from "react";
 import { CheckCircle, XCircle, AlertCircle, Key, Copy, Trash2, Upload, Plug, Plus, ChevronDown, ChevronRight, TestTube, Globe, Brain, Database, Package, Loader2, Shield, Lock, ClipboardPaste, Edit, Eye, EyeOff } from "lucide-react";
 import { useQuery, useMutation } from "convex/react";
@@ -61,7 +61,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const [newKeyName, setNewKeyName] = useState("");
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const [showAddLLMKey, setShowAddLLMKey] = useState(false);
-  const [selectedProvider, setSelectedProvider] = useState<'anthropic' | 'openai' | 'groq' | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<'openai' | 'groq' | null>(null);
 
   const apiKeys = useQuery(api.apiKeys.list, {});
   const generateKey = useMutation(api.apiKeys.generate);
@@ -126,8 +126,6 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     }
   }, [isOpen, user?.id, mcpServers?.length]);
 
-  if (!isOpen) return null;
-
   const StatusIcon = ({ configured }: { configured: boolean }) =>
     configured ? (
       <CheckCircle className="w-16 h-16 text-heat-100" />
@@ -136,413 +134,418 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
     );
 
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center"
-        onClick={onClose}
-      >
-        <motion.div
-          initial={{ scale: 0.95, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.95, opacity: 0 }}
-          transition={{ type: "spring", duration: 0.3 }}
-          className="bg-accent-white rounded-16 shadow-2xl max-w-2xl w-full mx-20 flex flex-col"
-          style={{ maxHeight: '85vh' }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Header - Fixed */}
-          <div className="p-24 border-b border-border-faint flex-shrink-0">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-title-h4 text-accent-black">Configuration Status</h2>
-                <p className="text-body-small text-black-alpha-48 mt-4">
-                  API keys are configured in your .env.local file
-                </p>
-              </div>
-              <button
-                onClick={onClose}
-                className="w-32 h-32 rounded-8 hover:bg-black-alpha-4 transition-colors flex items-center justify-center"
-              >
-                <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          {/* Content - Scrollable */}
-          <div className="p-24 overflow-y-auto flex-1">
-            {loading ? (
-              <div className="text-center py-32">
-                <div className="inline-block w-32 h-32 border-4 border-heat-100 border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-body-small text-black-alpha-48 mt-12">Loading configuration...</p>
-              </div>
-            ) : (
-              <div className="space-y-20">
-                {/* LLM Providers */}
-                <div>
-                  <div className="flex items-center justify-between mb-12">
-                    <h3 className="text-label-large font-medium text-accent-black">LLM Providers</h3>
-                    <button
-                      onClick={() => setShowAddLLMKey(true)}
-                      className="px-12 py-6 bg-heat-100 hover:bg-heat-200 text-white rounded-8 text-body-small font-medium transition-all active:scale-[0.98] flex items-center gap-6"
-                    >
-                      <Plus className="w-14 h-14" />
-                      Add API Key
-                    </button>
-                  </div>
-
-                  {/* Provider Cards with Keys */}
-                  <div className="space-y-8">
-                    {['anthropic', 'openai', 'groq'].map(provider => {
-                      const providerKey = userLLMKeys?.find(k => k.provider === provider && k.isActive);
-                      const hasEnvKey = provider === 'anthropic' ? serverConfig?.anthropicConfigured :
-                                       provider === 'openai' ? serverConfig?.openaiConfigured :
-                                       serverConfig?.groqConfigured;
-
-                      return (
-                        <div key={provider} className="p-12 bg-background-base rounded-8 border border-border-faint">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-8">
-                              <StatusIcon configured={!!(providerKey || hasEnvKey)} />
-                              <div>
-                                <p className="text-body-small text-accent-black font-medium capitalize">{provider}</p>
-                                {providerKey ? (
-                                  <p className="text-xs text-black-alpha-48">
-                                    Key: {providerKey.keyPrefix} {providerKey.label && `(${providerKey.label})`}
-                                  </p>
-                                ) : hasEnvKey ? (
-                                  <p className="text-xs text-black-alpha-48">Using environment variable</p>
-                                ) : (
-                                  <p className="text-xs text-black-alpha-48">Not configured</p>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-8">
-                              {providerKey && (
-                                <>
-                                  <button
-                                    onClick={async () => {
-                                      if (user?.id) {
-                                        await deleteLLMKey({ id: providerKey._id, userId: user.id });
-                                        toast.success(`${provider} key removed`);
-                                      }
-                                    }}
-                                    className="p-6 hover:bg-black-alpha-4 rounded-6 transition-colors"
-                                    title="Remove key"
-                                  >
-                                    <Trash2 className="w-14 h-14 text-black-alpha-48 hover:text-accent-black" />
-                                  </button>
-                                </>
-                              )}
-                              <button
-                                onClick={() => {
-                                  setSelectedProvider(provider as any);
-                                  setShowAddLLMKey(true);
-                                }}
-                                className="p-6 hover:bg-black-alpha-4 rounded-6 transition-colors"
-                                title={providerKey ? "Update key" : "Add key"}
-                              >
-                                {providerKey ? (
-                                  <Edit className="w-14 h-14 text-black-alpha-48 hover:text-accent-black" />
-                                ) : (
-                                  <Plus className="w-14 h-14 text-black-alpha-48 hover:text-accent-black" />
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="mt-8 p-12 bg-heat-4 border border-heat-100 rounded-8">
-                    <p className="text-xs text-black-alpha-64">
-                      <strong>Note:</strong> Your API keys take priority over environment variables.
-                      Keys are encrypted and stored securely per user.
+    <>
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            key="settings-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center"
+            onClick={onClose}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ type: "spring", duration: 0.3 }}
+              className="bg-accent-white rounded-16 shadow-2xl max-w-2xl w-full mx-20 flex flex-col"
+              style={{ maxHeight: '85vh' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header - Fixed */}
+              <div className="p-24 border-b border-border-faint flex-shrink-0">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-title-h4 text-accent-black">Configuration Status</h2>
+                    <p className="text-body-small text-black-alpha-48 mt-4">
+                      API keys are configured in your .env.local file
                     </p>
                   </div>
+                  <button
+                    onClick={onClose}
+                    className="w-32 h-32 rounded-8 hover:bg-black-alpha-4 transition-colors flex items-center justify-center"
+                  >
+                    <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
+              </div>
 
-                {/* Integrations */}
-                <div>
-                  <h3 className="text-label-large font-medium text-accent-black mb-12">Integrations</h3>
-                  <div className="grid grid-cols-1 gap-8">
-                    <div className="flex items-center gap-8 p-10 bg-background-base rounded-8 border border-border-faint">
-                      <StatusIcon configured={serverConfig?.firecrawlConfigured || false} />
-                      <div className="min-w-0">
-                        <p className="text-body-small text-accent-black font-medium truncate">Firecrawl</p>
+              {/* Content - Scrollable */}
+              <div className="p-24 overflow-y-auto flex-1">
+                {loading ? (
+                  <div className="text-center py-32">
+                    <div className="inline-block w-32 h-32 border-4 border-heat-100 border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-body-small text-black-alpha-48 mt-12">Loading configuration...</p>
+                  </div>
+                ) : (
+                  <div className="space-y-20">
+                    {/* LLM Providers */}
+                    <div>
+                      <div className="flex items-center justify-between mb-12">
+                        <h3 className="text-label-large font-medium text-accent-black">LLM Providers</h3>
+                        <button
+                          onClick={() => setShowAddLLMKey(true)}
+                          className="px-12 py-6 bg-heat-100 hover:bg-heat-200 text-white rounded-8 text-body-small font-medium transition-all active:scale-[0.98] flex items-center gap-6"
+                        >
+                          <Plus className="w-14 h-14" />
+                          Add API Key
+                        </button>
+                      </div>
+
+                      {/* Provider Cards with Keys */}
+                      <div className="space-y-8">
+                        {['openai', 'groq'].map(provider => {
+                          const providerKey = userLLMKeys?.find(k => k.provider === provider && k.isActive);
+                          const hasEnvKey = provider === 'openai' ? serverConfig?.openaiConfigured :
+                            provider === 'openai' ? serverConfig?.openaiConfigured :
+                              serverConfig?.groqConfigured;
+
+                          return (
+                            <div key={provider} className="p-12 bg-background-base rounded-8 border border-border-faint">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-8">
+                                  <StatusIcon configured={!!(providerKey || hasEnvKey)} />
+                                  <div>
+                                    <p className="text-body-small text-accent-black font-medium capitalize">{provider}</p>
+                                    {providerKey ? (
+                                      <p className="text-xs text-black-alpha-48">
+                                        Key: {providerKey.keyPrefix} {providerKey.label && `(${providerKey.label})`}
+                                      </p>
+                                    ) : hasEnvKey ? (
+                                      <p className="text-xs text-black-alpha-48">Using environment variable</p>
+                                    ) : (
+                                      <p className="text-xs text-black-alpha-48">Not configured</p>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-8">
+                                  {providerKey && (
+                                    <>
+                                      <button
+                                        onClick={async () => {
+                                          if (user?.id) {
+                                            await deleteLLMKey({ id: providerKey._id, userId: user.id });
+                                            toast.success(`${provider} key removed`);
+                                          }
+                                        }}
+                                        className="p-6 hover:bg-black-alpha-4 rounded-6 transition-colors"
+                                        title="Remove key"
+                                      >
+                                        <Trash2 className="w-14 h-14 text-black-alpha-48 hover:text-accent-black" />
+                                      </button>
+                                    </>
+                                  )}
+                                  <button
+                                    onClick={() => {
+                                      setSelectedProvider(provider as any);
+                                      setShowAddLLMKey(true);
+                                    }}
+                                    className="p-6 hover:bg-black-alpha-4 rounded-6 transition-colors"
+                                    title={providerKey ? "Update key" : "Add key"}
+                                  >
+                                    {providerKey ? (
+                                      <Edit className="w-14 h-14 text-black-alpha-48 hover:text-accent-black" />
+                                    ) : (
+                                      <Plus className="w-14 h-14 text-black-alpha-48 hover:text-accent-black" />
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="mt-8 p-12 bg-heat-4 border border-heat-100 rounded-8">
+                        <p className="text-xs text-black-alpha-64">
+                          <strong>Note:</strong> Your API keys take priority over environment variables.
+                          Keys are encrypted and stored securely per user.
+                        </p>
                       </div>
                     </div>
-                  </div>
-                </div>
 
-                {/* API Keys */}
-                <div>
-                  <h3 className="text-label-large font-medium text-accent-black mb-12">Your API Keys</h3>
-
-                  {/* Show generated key once */}
-                  {generatedKey && (
-                    <div className="p-16 bg-heat-4 border border-heat-100 rounded-8 mb-12">
-                      <div className="flex items-start gap-12 mb-12">
-                        <AlertCircle className="w-20 h-20 text-heat-100 flex-shrink-0 mt-2" />
-                        <div className="flex-1">
-                          <p className="text-body-medium text-accent-black font-medium mb-4">
-                            Save this key now!
-                          </p>
-                          <p className="text-body-small text-black-alpha-64 mb-8">
-                            You won't be able to see it again.
-                          </p>
-                          <div className="flex items-center gap-8">
-                            <code className="flex-1 px-12 py-8 bg-white border border-border-faint rounded-8 text-xs font-mono text-accent-black">
-                              {generatedKey}
-                            </code>
-                            <button
-                              onClick={() => {
-                                navigator.clipboard.writeText(generatedKey);
-                                toast.success('API key copied');
-                              }}
-                              className="px-12 py-8 bg-accent-black hover:bg-black-alpha-88 text-white rounded-8 text-body-small font-medium transition-all active:scale-[0.98] flex items-center gap-6"
-                            >
-                              <Copy className="w-14 h-14" />
-                              Copy
-                            </button>
+                    {/* Integrations */}
+                    <div>
+                      <h3 className="text-label-large font-medium text-accent-black mb-12">Integrations</h3>
+                      <div className="grid grid-cols-1 gap-8">
+                        <div className="flex items-center gap-8 p-10 bg-background-base rounded-8 border border-border-faint">
+                          <StatusIcon configured={serverConfig?.firecrawlConfigured || false} />
+                          <div className="min-w-0">
+                            <p className="text-body-small text-accent-black font-medium truncate">Firecrawl</p>
                           </div>
                         </div>
                       </div>
-                      <button
-                        onClick={() => setGeneratedKey(null)}
-                        className="text-body-small text-black-alpha-64 hover:text-accent-black"
-                      >
-                        I've saved it
-                      </button>
                     </div>
-                  )}
 
-                  {/* Generate new key */}
-                  <div className="flex gap-8 mb-12">
-                    <input
-                      type="text"
-                      placeholder="Key name (e.g., Production)"
-                      value={newKeyName}
-                      onChange={(e) => setNewKeyName(e.target.value)}
-                      className="flex-1 px-12 py-8 bg-background-base border border-border-faint rounded-8 text-body-small text-accent-black placeholder:text-black-alpha-32"
-                    />
-                    <button
-                      onClick={async () => {
-                        if (!newKeyName.trim()) {
-                          toast.error('Please enter a key name');
-                          return;
-                        }
-                        const result = await generateKey({ name: newKeyName.trim() });
-                        setGeneratedKey(result.key);
-                        setNewKeyName("");
+                    {/* API Keys */}
+                    <div>
+                      <h3 className="text-label-large font-medium text-accent-black mb-12">Your API Keys</h3>
 
-                        // Store in sessionStorage for curl examples
-                        if (typeof window !== 'undefined') {
-                          sessionStorage.setItem('latest_api_key', result.key);
-                        }
-
-                        toast.success('API key generated');
-                      }}
-                      className="px-16 py-8 bg-heat-100 hover:bg-heat-200 text-white rounded-8 text-body-small font-medium transition-all active:scale-[0.98] flex items-center gap-6"
-                    >
-                      <Key className="w-14 h-14" />
-                      Generate
-                    </button>
-                  </div>
-
-                  {/* List existing keys */}
-                  <div className="space-y-8">
-                    {apiKeys?.map((key) => (
-                      <div
-                        key={key._id}
-                        className="flex items-center justify-between p-12 bg-background-base rounded-8 border border-border-faint"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <p className="text-body-small text-accent-black font-medium">{key.name}</p>
-                          <code className="text-xs text-black-alpha-48 font-mono">{key.keyPrefix}</code>
-                          <p className="text-xs text-black-alpha-32 mt-4">
-                            Used {key.usageCount} times {key.lastUsedAt && `• Last used ${new Date(key.lastUsedAt).toLocaleDateString()}`}
-                          </p>
+                      {/* Show generated key once */}
+                      {generatedKey && (
+                        <div className="p-16 bg-heat-4 border border-heat-100 rounded-8 mb-12">
+                          <div className="flex items-start gap-12 mb-12">
+                            <AlertCircle className="w-20 h-20 text-heat-100 flex-shrink-0 mt-2" />
+                            <div className="flex-1">
+                              <p className="text-body-medium text-accent-black font-medium mb-4">
+                                Save this key now!
+                              </p>
+                              <p className="text-body-small text-black-alpha-64 mb-8">
+                                You won't be able to see it again.
+                              </p>
+                              <div className="flex items-center gap-8">
+                                <code className="flex-1 px-12 py-8 bg-white border border-border-faint rounded-8 text-xs font-mono text-accent-black">
+                                  {generatedKey}
+                                </code>
+                                <button
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(generatedKey);
+                                    toast.success('API key copied');
+                                  }}
+                                  className="px-12 py-8 bg-accent-black hover:bg-black-alpha-88 text-white rounded-8 text-body-small font-medium transition-all active:scale-[0.98] flex items-center gap-6"
+                                >
+                                  <Copy className="w-14 h-14" />
+                                  Copy
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => setGeneratedKey(null)}
+                            className="text-body-small text-black-alpha-64 hover:text-accent-black"
+                          >
+                            I've saved it
+                          </button>
                         </div>
+                      )}
+
+                      {/* Generate new key */}
+                      <div className="flex gap-8 mb-12">
+                        <input
+                          type="text"
+                          placeholder="Key name (e.g., Production)"
+                          value={newKeyName}
+                          onChange={(e) => setNewKeyName(e.target.value)}
+                          className="flex-1 px-12 py-8 bg-background-base border border-border-faint rounded-8 text-body-small text-accent-black placeholder:text-black-alpha-32"
+                        />
                         <button
                           onClick={async () => {
-                            await revokeKey({ id: key._id });
-                            toast.success('API key revoked');
-                          }}
-                          className="p-8 hover:bg-black-alpha-4 rounded-8 transition-colors"
-                          title="Revoke key"
-                        >
-                          <Trash2 className="w-16 h-16 text-black-alpha-48 hover:text-accent-black" />
-                        </button>
-                      </div>
-                    ))}
-
-                    {(!apiKeys || apiKeys.length === 0) && !generatedKey && (
-                      <p className="text-body-small text-black-alpha-48 text-center py-16">
-                        No API keys yet. Generate one to access workflows via API.
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* MCP Registry */}
-                <div>
-                  <div className="flex items-center justify-between mb-12">
-                    <h3 className="text-label-large font-medium text-accent-black">MCP Registry</h3>
-                    <div className="flex gap-8">
-                      <button
-                        onClick={() => setShowPasteConfigModal(true)}
-                        className="px-12 py-6 bg-black-alpha-4 hover:bg-black-alpha-8 text-accent-black rounded-8 text-body-small font-medium transition-all active:scale-[0.98] flex items-center gap-6 border border-border-faint"
-                      >
-                        <ClipboardPaste className="w-14 h-14" />
-                        Paste Config
-                      </button>
-                      <button
-                        onClick={() => setShowAddMCPModal(true)}
-                        className="px-12 py-6 bg-heat-100 hover:bg-heat-200 text-white rounded-8 text-body-small font-medium transition-all active:scale-[0.98] flex items-center gap-6"
-                      >
-                        <Plus className="w-14 h-14" />
-                        Add MCP Server
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* MCP Cards */}
-                  <div className="space-y-8">
-                    {mcpServers?.map((server) => (
-                      <MCPCard
-                        key={server._id}
-                        server={server}
-                        isExpanded={expandedMCPs.has(server._id)}
-                        isTesting={testingMCPs.has(server._id)}
-                        onExpandToggle={() => {
-                          const newExpanded = new Set(expandedMCPs);
-                          if (newExpanded.has(server._id)) {
-                            newExpanded.delete(server._id);
-                          } else {
-                            newExpanded.add(server._id);
-                          }
-                          setExpandedMCPs(newExpanded);
-                        }}
-                        onToggle={async () => {
-                          await toggleMCPEnabled({ id: server._id });
-                          toast.success(`${server.name} ${server.enabled ? 'disabled' : 'enabled'}`);
-                        }}
-                        onTest={async () => {
-                          setTestingMCPs(prev => new Set(Array.from(prev).concat(server._id)));
-                          try {
-                            // Actually test the connection and discover tools
-                            const response = await fetch('/api/test-mcp-connection', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                url: server.url,
-                                authToken: server.accessToken,
-                                headers: server.headers,
-                              }),
-                            });
-
-                            const result = await response.json();
-
-                            if (result.success) {
-                              // Update with real discovered tools
-                              await updateConnectionStatus({
-                                id: server._id,
-                                status: "connected",
-                                tools: result.tools || []
-                              });
-                              toast.success(`Connected to ${server.name} - ${result.tools?.length || 0} tools discovered`);
-                            } else {
-                              await updateConnectionStatus({
-                                id: server._id,
-                                status: "error",
-                                error: result.error || "Connection failed"
-                              });
-                              toast.error(`Failed to connect to ${server.name}`, {
-                                description: result.error || result.details,
-                              });
+                            if (!newKeyName.trim()) {
+                              toast.error('Please enter a key name');
+                              return;
                             }
-                          } catch (error) {
-                            await updateConnectionStatus({
-                              id: server._id,
-                              status: "error",
-                              error: error instanceof Error ? error.message : "Connection failed"
-                            });
-                            toast.error(`Failed to connect to ${server.name}`);
-                          } finally {
-                            setTestingMCPs(prev => {
-                              const newSet = new Set(prev);
-                              newSet.delete(server._id);
-                              return newSet;
-                            });
-                          }
-                        }}
-                        onEdit={() => {
-                          setEditingMCP(server);
-                          setShowAddMCPModal(true);
-                        }}
-                        onDelete={async () => {
-                          if (confirm(`Delete ${server.name}?`)) {
-                            await deleteMCPServer({ id: server._id });
-                            toast.success(`${server.name} deleted`);
-                          }
-                        }}
-                      />
-                    ))}
+                            const result = await generateKey({ name: newKeyName.trim() });
+                            setGeneratedKey(result.key);
+                            setNewKeyName("");
 
-                    {(!mcpServers || mcpServers.length === 0) && (
-                      <div className="text-center py-32">
-                        <Plug className="w-48 h-48 text-black-alpha-16 mx-auto mb-12" />
-                        <p className="text-body-small text-black-alpha-48 mb-16">
-                          No MCP servers configured yet
-                        </p>
-                        <button
-                          onClick={() => setShowAddMCPModal(true)}
-                          className="px-20 py-10 bg-heat-100 hover:bg-heat-200 text-white rounded-8 text-body-medium font-medium transition-all active:scale-[0.98]"
+                            // Store in sessionStorage for curl examples
+                            if (typeof window !== 'undefined') {
+                              sessionStorage.setItem('latest_api_key', result.key);
+                            }
+
+                            toast.success('API key generated');
+                          }}
+                          className="px-16 py-8 bg-heat-100 hover:bg-heat-200 text-white rounded-8 text-body-small font-medium transition-all active:scale-[0.98] flex items-center gap-6"
                         >
-                          Add Your First MCP Server
+                          <Key className="w-14 h-14" />
+                          Generate
                         </button>
                       </div>
-                    )}
-                  </div>
-                </div>
 
-                {/* Info Box */}
-                <div className="p-16 bg-heat-4 border border-heat-100 rounded-8">
-                  <div className="flex items-start gap-12">
-                    <AlertCircle className="w-20 h-20 text-heat-100 flex-shrink-0 mt-2" />
+                      {/* List existing keys */}
+                      <div className="space-y-8">
+                        {apiKeys?.map((key) => (
+                          <div
+                            key={key._id}
+                            className="flex items-center justify-between p-12 bg-background-base rounded-8 border border-border-faint"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="text-body-small text-accent-black font-medium">{key.name}</p>
+                              <code className="text-xs text-black-alpha-48 font-mono">{key.keyPrefix}</code>
+                              <p className="text-xs text-black-alpha-32 mt-4">
+                                Used {key.usageCount} times {key.lastUsedAt && `• Last used ${new Date(key.lastUsedAt).toLocaleDateString()}`}
+                              </p>
+                            </div>
+                            <button
+                              onClick={async () => {
+                                await revokeKey({ id: key._id });
+                                toast.success('API key revoked');
+                              }}
+                              className="p-8 hover:bg-black-alpha-4 rounded-8 transition-colors"
+                              title="Revoke key"
+                            >
+                              <Trash2 className="w-16 h-16 text-black-alpha-48 hover:text-accent-black" />
+                            </button>
+                          </div>
+                        ))}
+
+                        {(!apiKeys || apiKeys.length === 0) && !generatedKey && (
+                          <p className="text-body-small text-black-alpha-48 text-center py-16">
+                            No API keys yet. Generate one to access workflows via API.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* MCP Registry */}
                     <div>
-                      <p className="text-body-medium text-accent-black font-medium mb-4">
-                        How to Configure
-                      </p>
-                      <p className="text-body-small text-black-alpha-64">
-                        LLM & Integration keys are set in <code className="px-4 py-2 bg-white rounded text-xs font-mono">.env.local</code>.
-                        MCP servers can be imported from cursor config above.
-                      </p>
+                      <div className="flex items-center justify-between mb-12">
+                        <h3 className="text-label-large font-medium text-accent-black">MCP Registry</h3>
+                        <div className="flex gap-8">
+                          <button
+                            onClick={() => setShowPasteConfigModal(true)}
+                            className="px-12 py-6 bg-black-alpha-4 hover:bg-black-alpha-8 text-accent-black rounded-8 text-body-small font-medium transition-all active:scale-[0.98] flex items-center gap-6 border border-border-faint"
+                          >
+                            <ClipboardPaste className="w-14 h-14" />
+                            Paste Config
+                          </button>
+                          <button
+                            onClick={() => setShowAddMCPModal(true)}
+                            className="px-12 py-6 bg-heat-100 hover:bg-heat-200 text-white rounded-8 text-body-small font-medium transition-all active:scale-[0.98] flex items-center gap-6"
+                          >
+                            <Plus className="w-14 h-14" />
+                            Add MCP Server
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* MCP Cards */}
+                      <div className="space-y-8">
+                        {mcpServers?.map((server) => (
+                          <MCPCard
+                            key={server._id}
+                            server={server}
+                            isExpanded={expandedMCPs.has(server._id)}
+                            isTesting={testingMCPs.has(server._id)}
+                            onExpandToggle={() => {
+                              const newExpanded = new Set(expandedMCPs);
+                              if (newExpanded.has(server._id)) {
+                                newExpanded.delete(server._id);
+                              } else {
+                                newExpanded.add(server._id);
+                              }
+                              setExpandedMCPs(newExpanded);
+                            }}
+                            onToggle={async () => {
+                              await toggleMCPEnabled({ id: server._id });
+                              toast.success(`${server.name} ${server.enabled ? 'disabled' : 'enabled'}`);
+                            }}
+                            onTest={async () => {
+                              setTestingMCPs(prev => new Set(Array.from(prev).concat(server._id)));
+                              try {
+                                // Actually test the connection and discover tools
+                                const response = await fetch('/api/test-mcp-connection', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    url: server.url,
+                                    authToken: server.accessToken,
+                                    headers: server.headers,
+                                  }),
+                                });
+
+                                const result = await response.json();
+
+                                if (result.success) {
+                                  // Update with real discovered tools
+                                  await updateConnectionStatus({
+                                    id: server._id,
+                                    status: "connected",
+                                    tools: result.tools || []
+                                  });
+                                  toast.success(`Connected to ${server.name} - ${result.tools?.length || 0} tools discovered`);
+                                } else {
+                                  await updateConnectionStatus({
+                                    id: server._id,
+                                    status: "error",
+                                    error: result.error || "Connection failed"
+                                  });
+                                  toast.error(`Failed to connect to ${server.name}`, {
+                                    description: result.error || result.details,
+                                  });
+                                }
+                              } catch (error) {
+                                await updateConnectionStatus({
+                                  id: server._id,
+                                  status: "error",
+                                  error: error instanceof Error ? error.message : "Connection failed"
+                                });
+                                toast.error(`Failed to connect to ${server.name}`);
+                              } finally {
+                                setTestingMCPs(prev => {
+                                  const newSet = new Set(prev);
+                                  newSet.delete(server._id);
+                                  return newSet;
+                                });
+                              }
+                            }}
+                            onEdit={() => {
+                              setEditingMCP(server);
+                              setShowAddMCPModal(true);
+                            }}
+                            onDelete={async () => {
+                              if (confirm(`Delete ${server.name}?`)) {
+                                await deleteMCPServer({ id: server._id });
+                                toast.success(`${server.name} deleted`);
+                              }
+                            }}
+                          />
+                        ))}
+
+                        {(!mcpServers || mcpServers.length === 0) && (
+                          <div className="text-center py-32">
+                            <Plug className="w-48 h-48 text-black-alpha-16 mx-auto mb-12" />
+                            <p className="text-body-small text-black-alpha-48 mb-16">
+                              No MCP servers configured yet
+                            </p>
+                            <button
+                              onClick={() => setShowAddMCPModal(true)}
+                              className="px-20 py-10 bg-heat-100 hover:bg-heat-200 text-white rounded-8 text-body-medium font-medium transition-all active:scale-[0.98]"
+                            >
+                              Add Your First MCP Server
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Info Box */}
+                    <div className="p-16 bg-heat-4 border border-heat-100 rounded-8">
+                      <div className="flex items-start gap-12">
+                        <AlertCircle className="w-20 h-20 text-heat-100 flex-shrink-0 mt-2" />
+                        <div>
+                          <p className="text-body-medium text-accent-black font-medium mb-4">
+                            How to Configure
+                          </p>
+                          <p className="text-body-small text-black-alpha-64">
+                            LLM & Integration keys are set in <code className="px-4 py-2 bg-white rounded text-xs font-mono">.env.local</code>.
+                            MCP servers can be imported from cursor config above.
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* Footer - Fixed */}
-          <div className="p-20 border-t border-border-faint bg-background-base rounded-b-16 flex-shrink-0">
-            <button
-              onClick={onClose}
-              className="w-full px-20 py-12 bg-accent-black hover:bg-black-alpha-88 text-white rounded-8 text-body-medium font-medium transition-all active:scale-[0.98]"
-            >
-              Close
-            </button>
-          </div>
-        </motion.div>
-      </motion.div>
+              {/* Footer - Fixed */}
+              <div className="p-20 border-t border-border-faint bg-background-base rounded-b-16 flex-shrink-0">
+                <button
+                  onClick={onClose}
+                  className="w-full px-20 py-12 bg-accent-black hover:bg-black-alpha-88 text-white rounded-8 text-body-medium font-medium transition-all active:scale-[0.98]"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Add MCP Modal */}
       {showAddMCPModal && (
@@ -625,13 +628,15 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
             setSelectedProvider(null);
           }}
           selectedProvider={selectedProvider}
-          onSave={async (provider, apiKey, label) => {
+          onSave={async (provider, apiKey, label, baseUrl, modelName) => {
             if (user?.id) {
               await upsertLLMKey({
                 userId: user.id,
                 provider,
                 apiKey,
-                label
+                label,
+                baseUrl,
+                modelName
               });
               toast.success(`${provider} API key saved`);
               setShowAddLLMKey(false);
@@ -731,7 +736,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
           }}
         />
       )}
-    </AnimatePresence>
+    </>
   );
 }
 
@@ -1150,15 +1155,17 @@ function AddMCPModal({ isOpen, onClose, onSave, editingServer }: AddMCPModalProp
 interface AddLLMKeyModalProps {
   isOpen: boolean;
   onClose: () => void;
-  selectedProvider: 'anthropic' | 'openai' | 'groq' | null;
-  onSave: (provider: string, apiKey: string, label?: string) => Promise<void>;
+  selectedProvider: 'openai' | 'groq' | null;
+  onSave: (provider: string, apiKey: string, label?: string, baseUrl?: string, modelName?: string) => Promise<void>;
 }
 
 function AddLLMKeyModal({ isOpen, onClose, selectedProvider, onSave }: AddLLMKeyModalProps) {
   const [formData, setFormData] = useState({
-    provider: selectedProvider || 'anthropic',
+    provider: selectedProvider || 'openai',
     apiKey: '',
     label: '',
+    baseUrl: '',
+    modelName: '',
   });
   const [showKey, setShowKey] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -1173,8 +1180,6 @@ function AddLLMKeyModal({ isOpen, onClose, selectedProvider, onSave }: AddLLMKey
 
   const getProviderHelpLink = (provider: string) => {
     switch (provider) {
-      case 'anthropic':
-        return 'https://console.anthropic.com/settings/keys';
       case 'openai':
         return 'https://platform.openai.com/api-keys';
       case 'groq':
@@ -1208,11 +1213,10 @@ function AddLLMKeyModal({ isOpen, onClose, selectedProvider, onSave }: AddLLMKey
             <label className="text-body-small text-black-alpha-64 mb-4 block">Provider</label>
             <select
               value={formData.provider}
-              onChange={(e) => setFormData({ ...formData, provider: e.target.value as 'anthropic' | 'openai' | 'groq' })}
+              onChange={(e) => setFormData({ ...formData, provider: e.target.value as 'openai' | 'groq' })}
               disabled={!!selectedProvider}
               className="w-full px-12 py-8 bg-background-base border border-border-faint rounded-8 text-body-small text-accent-black capitalize"
             >
-              <option value="anthropic">Anthropic</option>
               <option value="openai">OpenAI</option>
               <option value="groq">Groq</option>
             </select>
@@ -1226,9 +1230,8 @@ function AddLLMKeyModal({ isOpen, onClose, selectedProvider, onSave }: AddLLMKey
                 value={formData.apiKey}
                 onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
                 placeholder={
-                  formData.provider === 'anthropic' ? 'sk-ant-...' :
                   formData.provider === 'openai' ? 'sk-proj-...' :
-                  'gsk_...'
+                    'gsk_...'
                 }
                 className="w-full pr-32 px-12 py-8 bg-background-base border border-border-faint rounded-8 text-body-small text-accent-black font-mono"
               />
@@ -1253,6 +1256,31 @@ function AddLLMKeyModal({ isOpen, onClose, selectedProvider, onSave }: AddLLMKey
               Get your {formData.provider} API key →
             </a>
           </div>
+
+          {formData.provider === 'openai' && (
+            <>
+              <div>
+                <label className="text-body-small text-black-alpha-64 mb-4 block">Base URL (optional)</label>
+                <input
+                  type="text"
+                  value={formData.baseUrl}
+                  onChange={(e) => setFormData({ ...formData, baseUrl: e.target.value })}
+                  placeholder="e.g., https://api.openai.com/v1"
+                  className="w-full px-12 py-8 bg-background-base border border-border-faint rounded-8 text-body-small text-accent-black"
+                />
+              </div>
+              <div>
+                <label className="text-body-small text-black-alpha-64 mb-4 block">Model Name (optional)</label>
+                <input
+                  type="text"
+                  value={formData.modelName}
+                  onChange={(e) => setFormData({ ...formData, modelName: e.target.value })}
+                  placeholder="e.g., gpt-4"
+                  className="w-full px-12 py-8 bg-background-base border border-border-faint rounded-8 text-body-small text-accent-black"
+                />
+              </div>
+            </>
+          )}
 
           <div>
             <label className="text-body-small text-black-alpha-64 mb-4 block">Label (optional)</label>
@@ -1289,7 +1317,7 @@ function AddLLMKeyModal({ isOpen, onClose, selectedProvider, onSave }: AddLLMKey
               }
               setIsSaving(true);
               try {
-                await onSave(formData.provider, formData.apiKey, formData.label);
+                await onSave(formData.provider, formData.apiKey, formData.label, formData.baseUrl, formData.modelName);
               } finally {
                 setIsSaving(false);
               }

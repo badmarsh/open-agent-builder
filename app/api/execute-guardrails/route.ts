@@ -258,7 +258,10 @@ async function analyzeWithLLM(
     throw new Error('No JSON found in response');
   } else if (provider === 'openai' && apiKeys.openai) {
     const OpenAI = (await import('openai')).default;
-    const client = new OpenAI({ apiKey: apiKeys.openai });
+    const client = new OpenAI({
+      apiKey: apiKeys.openai,
+      ...(apiKeys.openaiBaseUrl ? { baseURL: apiKeys.openaiBaseUrl } : {})
+    });
 
     const response = await client.chat.completions.create({
       model: modelName,

@@ -19,7 +19,16 @@ export async function GET(request: NextRequest) {
     }
 
     const convex = await getAuthenticatedConvexClient();
-    const workflows = await convex.query(api.workflows.listWorkflows, {});
+    const workflows = await convex.query(api.workflows.list, {});
+
+    if (!Array.isArray(workflows)) {
+      return NextResponse.json({
+        workflows: [],
+        total: 0,
+        source: 'convex',
+        message: 'No workflows found or error in query',
+      });
+    }
 
     return NextResponse.json({
       workflows: workflows.map((w: any) => ({

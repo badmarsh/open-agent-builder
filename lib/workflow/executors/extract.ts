@@ -9,7 +9,7 @@ import { substituteVariables } from '../variable-substitution';
 export async function executeExtractNode(
   node: WorkflowNode,
   state: WorkflowState,
-  apiKeys?: { anthropic?: string; groq?: string; openai?: string; firecrawl?: string }
+  apiKeys?: { anthropic?: string; groq?: string; openai?: string; firecrawl?: string; openaiBaseUrl?: string }
 ): Promise<any> {
   const { data } = node;
 
@@ -27,7 +27,10 @@ export async function executeExtractNode(
 
     // Server-side execution only
     const OpenAI = (await import('openai')).default;
-    const client = new OpenAI({ apiKey: apiKeys?.openai });
+    const client = new OpenAI({
+      apiKey: apiKeys?.openai,
+      ...(apiKeys?.openaiBaseUrl ? { baseURL: apiKeys.openaiBaseUrl } : {})
+    });
 
     // Build full prompt with context
     let fullPrompt = instructions;

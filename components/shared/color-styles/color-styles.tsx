@@ -27,5 +27,5 @@ const colorsStyle = `
 }`;
 
 export default function ColorStyles() {
-  return <style dangerouslySetInnerHTML={{ __html: colorsStyle }} />;
+  return <style suppressHydrationWarning dangerouslySetInnerHTML={{ __html: colorsStyle }} />;
 }

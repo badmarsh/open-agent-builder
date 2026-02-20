@@ -55,7 +55,14 @@ export async function getAuthenticatedConvexClient(): Promise<ConvexHttpClient> 
   try {
     // Get Clerk auth token
     const { getToken } = await auth();
-    const token = await getToken({ template: "convex" });
+    const template = process.env.CLERK_JWT_TEMPLATE || "convex";
+    let token: string | null = null;
+    try {
+      token = await getToken({ template });
+    } catch (templateError) {
+      // Fallback when the template is missing (e.g. 404 from Clerk)
+      token = await getToken();
+    }
 
     // Set the authentication token
     if (token) {

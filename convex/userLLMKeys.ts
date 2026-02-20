@@ -54,6 +54,8 @@ export const getUserLLMKeys = query({
       keyPrefix: key.keyPrefix,
       label: key.label,
       isActive: key.isActive,
+      baseUrl: key.baseUrl,
+      modelName: key.modelName,
       createdAt: key.createdAt,
       updatedAt: key.updatedAt,
       lastUsedAt: key.lastUsedAt,
@@ -87,6 +89,8 @@ export const getActiveKey = query({
       provider: key.provider,
       apiKey: decrypt(key.encryptedKey),
       label: key.label,
+      baseUrl: key.baseUrl,
+      modelName: key.modelName,
     };
   },
 });
@@ -100,6 +104,8 @@ export const upsertLLMKey = mutation({
     provider: v.string(),
     apiKey: v.string(),
     label: v.optional(v.string()),
+    baseUrl: v.optional(v.string()),
+    modelName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     // Check if user already has a key for this provider
@@ -120,6 +126,8 @@ export const upsertLLMKey = mutation({
         encryptedKey,
         keyPrefix,
         label: args.label || existingKey.label,
+        baseUrl: args.baseUrl !== undefined ? args.baseUrl : existingKey.baseUrl,
+        modelName: args.modelName !== undefined ? args.modelName : existingKey.modelName,
         isActive: true,
         updatedAt: now,
       });
@@ -147,6 +155,8 @@ export const upsertLLMKey = mutation({
         encryptedKey,
         keyPrefix,
         label: args.label,
+        baseUrl: args.baseUrl,
+        modelName: args.modelName,
         isActive: true,
         createdAt: now,
         updatedAt: now,

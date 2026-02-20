@@ -10,7 +10,7 @@ import { resolveMCPServers, migrateMCPData } from '@/lib/mcp/resolver';
 export async function executeAgentNode(
   node: WorkflowNode,
   state: WorkflowState,
-  apiKeys?: { anthropic?: string; groq?: string; openai?: string; firecrawl?: string }
+  apiKeys?: { anthropic?: string; groq?: string; openai?: string; firecrawl?: string; openaiBaseUrl?: string }
 ): Promise<any> {
   const { data } = node;
 
@@ -57,9 +57,9 @@ export async function executeAgentNode(
       if (mockOutput !== undefined) {
         const mockChatUpdates = data.includeChatHistory
           ? [
-              { role: 'user', content: data.instructions || '' },
-              { role: 'assistant', content: typeof mockOutput === 'string' ? mockOutput : JSON.stringify(mockOutput) },
-            ]
+            { role: 'user', content: data.instructions || '' },
+            { role: 'assistant', content: typeof mockOutput === 'string' ? mockOutput : JSON.stringify(mockOutput) },
+          ]
           : [];
 
         return {
@@ -78,9 +78,9 @@ export async function executeAgentNode(
     // Prepare messages
     const messages = data.includeChatHistory && state.chatHistory.length > 0
       ? [
-          ...state.chatHistory,
-          { role: 'user' as const, content: contextualPrompt },
-        ]
+        ...state.chatHistory,
+        { role: 'user' as const, content: contextualPrompt },
+      ]
       : [{ role: 'user' as const, content: contextualPrompt }];
 
     // Parse model string (handle models with slashes like groq/openai/gpt-oss-120b)
@@ -206,7 +206,10 @@ export async function executeAgentNode(
       if (hasMcpTools) {
         // Use native OpenAI SDK for function calling
         const OpenAI = (await import('openai')).default;
-        const client = new OpenAI({ apiKey: apiKeys.openai });
+        const client = new OpenAI({
+          apiKey: apiKeys.openai,
+          ...(apiKeys.openaiBaseUrl ? { baseURL: apiKeys.openaiBaseUrl } : {})
+        });
 
         // Convert MCP tools to OpenAI function format
         const tools = mcpTools.map((mcp: any) => ({
@@ -319,6 +322,7 @@ export async function executeAgentNode(
         const model = new ChatOpenAI({
           apiKey: apiKeys.openai,
           model: modelName,
+          ...(apiKeys.openaiBaseUrl ? { configuration: { baseURL: apiKeys.openaiBaseUrl } } : {})
         });
 
         const response = await model.invoke(messages);
@@ -385,9 +389,9 @@ export async function executeAgentNode(
     // Prepare chat history updates (IMMUTABLE - don't mutate state)
     const serverChatUpdates = data.includeChatHistory
       ? [
-          { role: 'user', content: data.instructions || '' },
-          { role: 'assistant', content: responseText },
-        ]
+        { role: 'user', content: data.instructions || '' },
+        { role: 'assistant', content: responseText },
+      ]
       : [];
 
     let output: unknown = responseText;

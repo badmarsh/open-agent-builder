@@ -30,7 +30,7 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
-        <html lang="en">
+        <html lang="en" suppressHydrationWarning>
           <head>
             <title>Open Agent Builder</title>
             <meta name="description" content="Build AI agents and workflows with visual programming" />
@@ -39,6 +39,7 @@ export default function RootLayout({
           </head>
           <body
             className={`${GeistMono.variable} ${robotoMono.variable} font-sans text-accent-black bg-background-base overflow-x-clip`}
+            suppressHydrationWarning
           >
             <BigIntProvider>
               <main className="overflow-x-clip">{children}</main>

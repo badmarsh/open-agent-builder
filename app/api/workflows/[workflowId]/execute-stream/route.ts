@@ -110,11 +110,11 @@ export async function POST(
         // Get API keys - check user keys first, then fall back to environment
         const { getLLMApiKey } = await import('@/lib/api/llm-keys');
         const userId = authResult.userId;
-        
+
         const apiKeys = {
-          anthropic: userId ? await getLLMApiKey('anthropic', userId) : null || process.env.ANTHROPIC_API_KEY,
-          groq: userId ? await getLLMApiKey('groq', userId) : null || process.env.GROQ_API_KEY,
-          openai: userId ? await getLLMApiKey('openai', userId) : null || process.env.OPENAI_API_KEY,
+          anthropic: (userId ? await getLLMApiKey('anthropic', userId) : null) || process.env.ANTHROPIC_API_KEY,
+          groq: (userId ? await getLLMApiKey('groq', userId) : null) || process.env.GROQ_API_KEY,
+          openai: (userId ? await getLLMApiKey('openai', userId) : null) || process.env.OPENAI_API_KEY,
           firecrawl: process.env.FIRECRAWL_API_KEY, // Firecrawl keys are still environment-only for now
           arcade: process.env.ARCADE_API_KEY,
         };
@@ -138,43 +138,43 @@ export async function POST(
           executor = new LangGraphExecutor(
             workflow,
             (nodeId, result) => {
-            nodeResults[nodeId] = result;
+              nodeResults[nodeId] = result;
 
-            if (result.status === 'running') {
-              const node = workflow.nodes.find((n: any) => n.id === nodeId);
-              sendEvent('node_started', {
-                nodeId,
-                nodeName: node?.data?.nodeName || node?.data?.label || nodeId,
-                nodeType: node?.type || 'unknown',
-                timestamp: new Date().toISOString(),
-              });
-            } else if (result.status === 'completed') {
-              const node = workflow.nodes.find((n: any) => n.id === nodeId);
-              sendEvent('node_completed', {
-                nodeId,
-                nodeName: node?.data?.nodeName || node?.data?.label || nodeId,
-                result,
-                timestamp: new Date().toISOString(),
-              });
-            } else if (result.status === 'failed') {
-              const node = workflow.nodes.find((n: any) => n.id === nodeId);
-              sendEvent('node_failed', {
-                nodeId,
-                nodeName: node?.data?.nodeName || node?.data?.label || nodeId,
-                error: result.error,
-                timestamp: new Date().toISOString(),
-              });
-            } else if (result.status === 'pending-authorization' || result.status === 'pending-approval') {
-              const node = workflow.nodes.find((n: any) => n.id === nodeId);
-              sendEvent('node_paused', {
-                nodeId,
-                nodeName: node?.data?.nodeName || node?.data?.label || nodeId,
-                status: result.status,
-                timestamp: new Date().toISOString(),
-              });
-            }
-          },
-          apiKeys
+              if (result.status === 'running') {
+                const node = workflow.nodes.find((n: any) => n.id === nodeId);
+                sendEvent('node_started', {
+                  nodeId,
+                  nodeName: node?.data?.nodeName || node?.data?.label || nodeId,
+                  nodeType: node?.type || 'unknown',
+                  timestamp: new Date().toISOString(),
+                });
+              } else if (result.status === 'completed') {
+                const node = workflow.nodes.find((n: any) => n.id === nodeId);
+                sendEvent('node_completed', {
+                  nodeId,
+                  nodeName: node?.data?.nodeName || node?.data?.label || nodeId,
+                  result,
+                  timestamp: new Date().toISOString(),
+                });
+              } else if (result.status === 'failed') {
+                const node = workflow.nodes.find((n: any) => n.id === nodeId);
+                sendEvent('node_failed', {
+                  nodeId,
+                  nodeName: node?.data?.nodeName || node?.data?.label || nodeId,
+                  error: result.error,
+                  timestamp: new Date().toISOString(),
+                });
+              } else if (result.status === 'pending-authorization' || result.status === 'pending-approval') {
+                const node = workflow.nodes.find((n: any) => n.id === nodeId);
+                sendEvent('node_paused', {
+                  nodeId,
+                  nodeName: node?.data?.nodeName || node?.data?.label || nodeId,
+                  status: result.status,
+                  timestamp: new Date().toISOString(),
+                });
+              }
+            },
+            apiKeys
           );
         } catch (graphBuildError) {
           console.error('❌ Failed to build LangGraph:', graphBuildError);

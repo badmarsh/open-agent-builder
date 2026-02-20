@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "lsof -ti:3000,3001 | xargs kill -9 2>/dev/null || true && next dev",
+    "dev": "lsof -ti:3000,3001 | xargs kill -9 2>/dev/null || true && next dev -p 3107",
     "dev:all": "concurrently \"npx convex dev\" \"npm run dev\"",
     "build": "next build",
     "start": "next start",
@@ -38,7 +38,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.65.0",
     "@arcadeai/arcadejs": "^1.11.1",
-    "@clerk/nextjs": "^6.33.4",
+    "@clerk/nextjs": "^6.38.0",
     "@copilotkit/react-core": "^1.10.6",
     "@copilotkit/react-ui": "^1.10.6",
     "@copilotkit/sdk-js": "^1.10.6",
