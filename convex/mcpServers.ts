@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { query, mutation, action } from "./_generated/server";
 import { api } from "./_generated/api";
+import { Doc, Id } from "./_generated/dataModel";
 
 /**
  * Centralized MCP Server Registry Operations
@@ -55,7 +56,7 @@ export const getMCPServersByIds = query({
     const servers = await Promise.all(
       ids.map(id => db.get(id))
     );
-    return servers.filter(Boolean);
+    return servers.filter((s): s is Doc<"mcpServers"> => s !== null);
   },
 });
 
@@ -127,8 +128,12 @@ export const testConnection = action({
   args: {
     id: v.id("mcpServers"),
   },
-  handler: async ({ runMutation, runQuery }, { id }) => {
-    const server = await runQuery(api.mcpServers.getMCPServer, { id });
+  handler: async ({ runMutation, runQuery }, { id }: { id: Id<"mcpServers"> }): Promise<{
+    serverId: Id<"mcpServers">;
+    needsTest: boolean;
+    server: Doc<"mcpServers">;
+  }> => {
+    const server: Doc<"mcpServers"> | null = await runQuery(api.mcpServers.getMCPServer, { id });
 
     if (!server) {
       throw new Error("MCP server not found");
@@ -167,15 +172,11 @@ export const seedOfficialMCPs = mutation({
       .filter((q) => q.eq(q.field("isOfficial"), true))
       .first();
 
-    if (existing) {
-      return { message: "Official MCPs already seeded" };
-    }
-
     // Official MCP configuration - Only Firecrawl
     const officialMCPs = [
       {
         name: "Firecrawl",
-        url: "https://mcp.firecrawl.dev/{FIRECRAWL_API_KEY}/v2/mcp",
+        url: "http://localhost:8082/sse",
         description: "Web scraping, searching, and data extraction (API key required)",
         category: "web",
         authType: "api-key",
@@ -190,6 +191,17 @@ export const seedOfficialMCPs = mutation({
         ],
       },
     ];
+
+    if (existing) {
+      if (existing.name === "Firecrawl") {
+        await db.patch(existing._id, {
+          url: "http://localhost:8082/sse",
+          updatedAt: new Date().toISOString(),
+        });
+        return { message: "Official MCP (Firecrawl) updated to local SSE" };
+      }
+      return { message: "Official MCPs already seeded" };
+    }
 
     // Insert official MCPs for the user
     const insertedIds = await Promise.all(
