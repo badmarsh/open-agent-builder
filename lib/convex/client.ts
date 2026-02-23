@@ -55,12 +55,21 @@ export async function getAuthenticatedConvexClient(): Promise<ConvexHttpClient> 
   try {
     // Get Clerk auth token
     const { getToken } = await auth();
-    const template = process.env.CLERK_JWT_TEMPLATE || "convex";
+    const template = process.env.CLERK_JWT_TEMPLATE?.trim();
     let token: string | null = null;
-    try {
-      token = await getToken({ template });
-    } catch (templateError) {
-      // Fallback when the template is missing (e.g. 404 from Clerk)
+
+    // Only request a template token when explicitly configured
+    if (template) {
+      try {
+        token = await getToken({ template });
+      } catch (templateError) {
+        console.warn(
+          `Clerk JWT template "${template}" failed. Falling back to default token.`,
+          templateError
+        );
+        token = await getToken();
+      }
+    } else {
       token = await getToken();
     }
 
@@ -71,7 +80,7 @@ export async function getAuthenticatedConvexClient(): Promise<ConvexHttpClient> 
       console.warn('No Clerk token available - using unauthenticated client');
     }
   } catch (error) {
-    console.error('Failed to get Clerk token:', error);
+    console.warn('Failed to get Clerk token, using unauthenticated Convex client:', error);
     // Continue with unauthenticated client instead of throwing
     // This allows the app to function even if Clerk auth fails
   }

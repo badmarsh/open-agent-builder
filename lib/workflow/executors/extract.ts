@@ -9,7 +9,7 @@ import { substituteVariables } from '../variable-substitution';
 export async function executeExtractNode(
   node: WorkflowNode,
   state: WorkflowState,
-  apiKeys?: { anthropic?: string; groq?: string; openai?: string; firecrawl?: string; openaiBaseUrl?: string }
+  apiKeys?: { anthropic?: string; groq?: string; openai?: string; firecrawl?: string; openaiBaseUrl?: string; openaiModel?: string }
 ): Promise<any> {
   const { data } = node;
 
@@ -45,6 +45,7 @@ export async function executeExtractNode(
     const schema = typeof data.jsonSchema === 'string'
       ? JSON.parse(data.jsonSchema)
       : data.jsonSchema;
+    const defaultOpenAIModel = apiKeys?.openaiModel || process.env.OPENAI_MODEL || 'gpt-4.1';
 
     // If MCP tools are configured, use Responses API
     if (data.mcpTools && data.mcpTools.length > 0) {
@@ -59,7 +60,7 @@ export async function executeExtractNode(
       }));
 
       const response = await client.responses.create({
-        model: 'gpt-4.1',
+        model: defaultOpenAIModel,
         tools,
         input: fullPrompt,
         text: {
@@ -76,7 +77,7 @@ export async function executeExtractNode(
 
       return {
         extractedData,
-        model: 'gpt-4.1',
+        model: defaultOpenAIModel,
         tokensUsed: response.usage?.total_tokens || 0,
         mcpToolsUsed: response.output.filter((item: any) => item.type === 'mcp_call').length,
         __variableUpdates: { lastOutput: extractedData }, // Return as separate field for reducer
@@ -85,7 +86,7 @@ export async function executeExtractNode(
 
     // No MCP - use regular Chat Completions with JSON mode
     const completion = await client.chat.completions.create({
-      model: data.model || 'gpt-5-mini',
+      model: data.model || defaultOpenAIModel,
       messages: [
         { role: 'user', content: fullPrompt },
       ],

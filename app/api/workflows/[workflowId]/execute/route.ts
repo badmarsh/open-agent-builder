@@ -34,6 +34,8 @@ export async function POST(
       anthropic: process.env.ANTHROPIC_API_KEY,
       groq: process.env.GROQ_API_KEY,
       openai: process.env.OPENAI_API_KEY,
+      openaiBaseUrl: process.env.OPENAI_BASE_URL,
+      openaiModel: process.env.OPENAI_MODEL,
       firecrawl: process.env.FIRECRAWL_API_KEY,
       arcade: process.env.ARCADE_API_KEY,
     };

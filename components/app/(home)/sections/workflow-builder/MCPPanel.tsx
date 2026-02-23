@@ -227,8 +227,8 @@ export default function MCPPanel({
                                   className="mt-8"
                                 >
                                   <div className="space-y-6">
-                                    {selectedServer.tools.map((tool: string) => (
-                                      <div key={tool} className="p-8 bg-accent-white rounded-6 border border-border-faint">
+                                    {selectedServer.tools.map((tool: string, toolIndex: number) => (
+                                      <div key={`selected-tool-${selectedServer._id}-${tool || 'unknown'}-${toolIndex}`} className="p-8 bg-accent-white rounded-6 border border-border-faint">
                                         <code className="text-xs font-mono text-heat-100">
                                           {tool}
                                         </code>

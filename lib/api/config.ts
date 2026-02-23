@@ -8,6 +8,7 @@ export interface APIKeys {
   groq?: string;
   openai?: string;
   openaiBaseUrl?: string;
+  openaiModel?: string;
   firecrawl?: string;
   arcade?: string;
   e2b?: string;
@@ -22,6 +23,7 @@ export function getServerAPIKeys(): APIKeys {
   const groq = process.env.GROQ_API_KEY;
   const openai = process.env.OPENAI_API_KEY;
   const openaiBaseUrl = process.env.OPENAI_BASE_URL;
+  const openaiModel = process.env.OPENAI_MODEL;
   const firecrawl = process.env.FIRECRAWL_API_KEY;
   const arcade = process.env.ARCADE_API_KEY;
   const e2b = process.env.E2B_API_KEY;
@@ -31,6 +33,7 @@ export function getServerAPIKeys(): APIKeys {
     groq,
     openai,
     openaiBaseUrl,
+    openaiModel,
     firecrawl,
     arcade,
     e2b,

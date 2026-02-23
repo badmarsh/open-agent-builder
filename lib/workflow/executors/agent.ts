@@ -3,6 +3,61 @@ import { WorkflowNode, WorkflowState } from '../types';
 import { substituteVariables } from '../variable-substitution';
 import { resolveMCPServers, migrateMCPData } from '@/lib/mcp/resolver';
 
+type LLMProvider = 'anthropic' | 'openai' | 'groq';
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isAuthKeyError(error: unknown): boolean {
+  const message = getErrorMessage(error).toLowerCase();
+  const hasApiKeyToken =
+    message.includes('api-key') ||
+    message.includes('api key') ||
+    message.includes('api_key') ||
+    message.includes('x-api-key');
+  const hasAuthSignal =
+    message.includes('invalid') ||
+    message.includes('incorrect') ||
+    message.includes('unauthorized') ||
+    message.includes('authentication') ||
+    message.includes('forbidden');
+
+  return (
+    message.includes('invalid api-key') ||
+    message.includes('invalid api key') ||
+    message.includes('incorrect api key') ||
+    message.includes('authentication error') ||
+    (hasApiKeyToken && hasAuthSignal)
+  );
+}
+
+async function withEnvKeyFallback<T>(
+  provider: LLMProvider,
+  selectedKey: string,
+  executeWithKey: (apiKey: string) => Promise<T>
+): Promise<T> {
+  try {
+    return await executeWithKey(selectedKey);
+  } catch (error) {
+    const envKeyMap: Record<LLMProvider, string | undefined> = {
+      anthropic: process.env.ANTHROPIC_API_KEY,
+      openai: process.env.OPENAI_API_KEY,
+      groq: process.env.GROQ_API_KEY,
+    };
+    const fallbackEnvKey = envKeyMap[provider];
+
+    if (isAuthKeyError(error) && fallbackEnvKey && fallbackEnvKey !== selectedKey) {
+      console.warn(
+        `Primary ${provider} API key was rejected by provider. Retrying once with ${provider.toUpperCase()}_API_KEY from environment.`
+      );
+      return await executeWithKey(fallbackEnvKey);
+    }
+
+    throw error;
+  }
+}
+
 /**
  * Execute Agent Node - Calls LLM with instructions and tools
  * Server-side only - called from API routes
@@ -10,7 +65,7 @@ import { resolveMCPServers, migrateMCPData } from '@/lib/mcp/resolver';
 export async function executeAgentNode(
   node: WorkflowNode,
   state: WorkflowState,
-  apiKeys?: { anthropic?: string; groq?: string; openai?: string; firecrawl?: string; openaiBaseUrl?: string }
+  apiKeys?: { anthropic?: string; groq?: string; openai?: string; firecrawl?: string; openaiBaseUrl?: string; openaiModel?: string }
 ): Promise<any> {
   const { data } = node;
 
@@ -97,6 +152,11 @@ export async function executeAgentNode(
       modelName = modelString;
     }
 
+    const configuredOpenAIModel = apiKeys?.openaiModel || process.env.OPENAI_MODEL;
+    if (provider === 'openai' && configuredOpenAIModel) {
+      modelName = configuredOpenAIModel;
+    }
+
     // Use native SDKs for better MCP support
     let responseText = '';
     interface LLMUsage {
@@ -123,265 +183,272 @@ export async function executeAgentNode(
     if (provider === 'anthropic' && apiKeys?.anthropic) {
       // Use native Anthropic SDK for MCP support
       const Anthropic = (await import('@anthropic-ai/sdk')).default;
-      const client = new Anthropic({ apiKey: apiKeys.anthropic });
 
-      if (hasMcpTools) {
-        // Separate Arcade from real MCP tools
-        const arcadeTools = mcpTools.filter((mcp: any) => mcp.name?.toLowerCase().includes('arcade'));
-        const realMcpTools = mcpTools.filter((mcp: any) => !mcp.name?.toLowerCase().includes('arcade'));
+      await withEnvKeyFallback('anthropic', apiKeys.anthropic, async (anthropicApiKey) => {
+        const client = new Anthropic({ apiKey: anthropicApiKey });
 
-        if (arcadeTools.length > 0) {
-          console.warn('⚠️ Arcade tools detected in MCP config - these will be skipped');
-        }
+        if (hasMcpTools) {
+          // Separate Arcade from real MCP tools
+          const arcadeTools = mcpTools.filter((mcp: any) => mcp.name?.toLowerCase().includes('arcade'));
+          const realMcpTools = mcpTools.filter((mcp: any) => !mcp.name?.toLowerCase().includes('arcade'));
 
-        // Build MCP servers configuration
-        const mcpServers = realMcpTools.map((mcp: any) => ({
-          type: 'url' as const,
-          url: mcp.url.includes('{FIRECRAWL_API_KEY}')
-            ? mcp.url.replace('{FIRECRAWL_API_KEY}', apiKeys.firecrawl || '')
-            : mcp.url,
-          name: mcp.name,
-          authorization_token: mcp.accessToken,
-        }));
-
-        const response = await client.beta.messages.create({
-          model: modelName,
-          max_tokens: 4096,
-          messages: messages as any,
-          mcp_servers: mcpServers as any,
-          betas: ['mcp-client-2025-04-04'],
-        } as any);
-
-        // Extract text and tool information from content
-        // Handle both standard tool_use and mcp_tool_use formats
-        const toolUses = response.content.filter((item: any) =>
-          item.type === 'tool_use' || item.type === 'mcp_tool_use'
-        );
-        const toolResults = response.content.filter((item: any) =>
-          item.type === 'tool_result' || item.type === 'mcp_tool_result'
-        );
-        const textBlocks = response.content.filter((item: any) => item.type === 'text');
-
-        responseText = textBlocks.map((item: any) => item.text).join('\n');
-        usage = (response.usage as any) || {};
-
-        // Format tool calls for logging and UI display
-        toolCalls = toolUses.map((item: any, idx: number) => {
-          const toolCall: any = {
-            type: item.type,
-            name: item.name,
-            server_name: item.server_name || 'MCP',
-            arguments: item.input, // Map 'input' to 'arguments' for UI compatibility
-            tool_use_id: item.id,
-          };
-
-          // Include tool result if available - extract output correctly for both formats
-          if (toolResults[idx]) {
-            const result = toolResults[idx] as any;
-            if (result.is_error) {
-              toolCall.output = { error: result.content };
-            } else if (Array.isArray(result.content)) {
-              toolCall.output = result.content[0]?.text || result.content;
-            } else {
-              toolCall.output = result.content;
-            }
+          if (arcadeTools.length > 0) {
+            console.warn('⚠️ Arcade tools detected in MCP config - these will be skipped');
           }
 
-          return toolCall;
-        });
-      } else {
-        // Regular Anthropic call without MCP
-        const response = await client.messages.create({
-          model: modelName,
-          max_tokens: 4096,
-          messages: messages as any,
-        });
+          // Build MCP servers configuration
+          const mcpServers = realMcpTools.map((mcp: any) => ({
+            type: 'url' as const,
+            url: mcp.url.includes('{FIRECRAWL_API_KEY}')
+              ? mcp.url.replace('{FIRECRAWL_API_KEY}', apiKeys.firecrawl || '')
+              : mcp.url,
+            name: mcp.name,
+            authorization_token: mcp.accessToken,
+          }));
 
-        responseText = response.content[0].type === 'text' ? response.content[0].text : '';
-        usage = (response.usage as any) || {};
-      }
+          const response = await client.beta.messages.create({
+            model: modelName,
+            max_tokens: 4096,
+            messages: messages as any,
+            mcp_servers: mcpServers as any,
+            betas: ['mcp-client-2025-04-04'],
+          } as any);
+
+          // Extract text and tool information from content
+          // Handle both standard tool_use and mcp_tool_use formats
+          const toolUses = response.content.filter((item: any) =>
+            item.type === 'tool_use' || item.type === 'mcp_tool_use'
+          );
+          const toolResults = response.content.filter((item: any) =>
+            item.type === 'tool_result' || item.type === 'mcp_tool_result'
+          );
+          const textBlocks = response.content.filter((item: any) => item.type === 'text');
+
+          responseText = textBlocks.map((item: any) => item.text).join('\n');
+          usage = (response.usage as any) || {};
+
+          // Format tool calls for logging and UI display
+          toolCalls = toolUses.map((item: any, idx: number) => {
+            const toolCall: any = {
+              type: item.type,
+              name: item.name,
+              server_name: item.server_name || 'MCP',
+              arguments: item.input, // Map 'input' to 'arguments' for UI compatibility
+              tool_use_id: item.id,
+            };
+
+            // Include tool result if available - extract output correctly for both formats
+            if (toolResults[idx]) {
+              const result = toolResults[idx] as any;
+              if (result.is_error) {
+                toolCall.output = { error: result.content };
+              } else if (Array.isArray(result.content)) {
+                toolCall.output = result.content[0]?.text || result.content;
+              } else {
+                toolCall.output = result.content;
+              }
+            }
+
+            return toolCall;
+          });
+        } else {
+          // Regular Anthropic call without MCP
+          const response = await client.messages.create({
+            model: modelName,
+            max_tokens: 4096,
+            messages: messages as any,
+          });
+
+          responseText = response.content[0].type === 'text' ? response.content[0].text : '';
+          usage = (response.usage as any) || {};
+        }
+      });
     } else if (provider === 'openai' && apiKeys?.openai) {
       const hasMcpTools = mcpTools && mcpTools.length > 0;
 
-      if (hasMcpTools) {
-        // Use native OpenAI SDK for function calling
-        const OpenAI = (await import('openai')).default;
-        const client = new OpenAI({
-          apiKey: apiKeys.openai,
-          ...(apiKeys.openaiBaseUrl ? { baseURL: apiKeys.openaiBaseUrl } : {})
-        });
-
-        // Convert MCP tools to OpenAI function format
-        const tools = mcpTools.map((mcp: any) => ({
-          type: "function" as const,
-          function: {
-            name: mcp.name || mcp.toolName || 'unknown_tool',
-            description: mcp.description || 'No description',
-            parameters: {
-              type: "object",
-              properties: mcp.schema?.properties || {},
-              required: mcp.schema?.required || []
-            }
-          }
-        }));
-
-        // First call with tools
-        const response = await client.chat.completions.create({
-          model: modelName,
-          messages: messages as any,
-          tools,
-          tool_choice: "auto"
-        });
-
-        const message = response.choices[0].message;
-        usage = (response.usage as unknown as LLMUsage) || ({} as LLMUsage);
-
-        // Handle tool calls
-        if (message.tool_calls && message.tool_calls.length > 0) {
-          // Execute MCP tools
-          const toolResults = await Promise.all(
-            message.tool_calls.map(async (call: any) => {
-              try {
-                // Find the MCP server for this tool
-                const mcpServer = mcpTools.find((m: any) =>
-                  (m.name || m.toolName) === call.function.name
-                );
-
-                if (!mcpServer) {
-                  throw new Error(`MCP server not found for tool: ${call.function.name}`);
-                }
-
-                // Parse arguments
-                const args = JSON.parse(call.function.arguments);
-
-                // Call MCP tool via HTTP
-                const mcpResponse = await fetch(mcpServer.url, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    ...(mcpServer.authToken && { 'Authorization': `Bearer ${mcpServer.authToken}` })
-                  },
-                  body: JSON.stringify({
-                    jsonrpc: '2.0',
-                    id: Date.now(),
-                    method: 'tools/call',
-                    params: {
-                      name: call.function.name,
-                      arguments: args
-                    }
-                  })
-                });
-
-                const result = await mcpResponse.json();
-                return {
-                  tool_call_id: call.id,
-                  role: "tool" as const,
-                  content: JSON.stringify(result.result || result)
-                };
-              } catch (error) {
-                return {
-                  tool_call_id: call.id,
-                  role: "tool" as const,
-                  content: JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' })
-                };
-              }
-            })
-          );
-
-          // Second call with tool results
-          const finalResponse = await client.chat.completions.create({
-            model: modelName,
-            messages: [
-              ...messages as any,
-              message,
-              ...toolResults
-            ]
+      await withEnvKeyFallback('openai', apiKeys.openai, async (openAIApiKey) => {
+        if (hasMcpTools) {
+          // Use native OpenAI SDK for function calling
+          const OpenAI = (await import('openai')).default;
+          const client = new OpenAI({
+            apiKey: openAIApiKey,
+            ...(apiKeys.openaiBaseUrl ? { baseURL: apiKeys.openaiBaseUrl } : {})
           });
 
-          responseText = finalResponse.choices[0].message.content || '';
-          usage = {
-            ...usage,
-            prompt_tokens: (usage.prompt_tokens || 0) + (finalResponse.usage?.prompt_tokens || 0),
-            completion_tokens: (usage.completion_tokens || 0) + (finalResponse.usage?.completion_tokens || 0),
-            total_tokens: (usage.total_tokens || 0) + (finalResponse.usage?.total_tokens || 0),
-          };
-
-          // Track tool calls
-          toolCalls = message.tool_calls.map((call: any, idx) => ({
-            id: call.id,
-            name: call.function.name,
-            arguments: JSON.parse(call.function.arguments),
-            output: toolResults[idx] ? JSON.parse(toolResults[idx].content) : null
+          // Convert MCP tools to OpenAI function format
+          const tools = mcpTools.map((mcp: any) => ({
+            type: "function" as const,
+            function: {
+              name: mcp.name || mcp.toolName || 'unknown_tool',
+              description: mcp.description || 'No description',
+              parameters: {
+                type: "object",
+                properties: mcp.schema?.properties || {},
+                required: mcp.schema?.required || []
+              }
+            }
           }));
-        } else {
-          responseText = message.content || '';
-        }
-      } else {
-        // Regular OpenAI call without MCP tools
-        const { ChatOpenAI } = await import('@langchain/openai');
-        const model = new ChatOpenAI({
-          apiKey: apiKeys.openai,
-          model: modelName,
-          ...(apiKeys.openaiBaseUrl ? { configuration: { baseURL: apiKeys.openaiBaseUrl } } : {})
-        });
 
-        const response = await model.invoke(messages);
-        responseText = response.content as string;
-        usage = response.response_metadata?.usage || {};
-      }
+          // First call with tools
+          const response = await client.chat.completions.create({
+            model: modelName,
+            messages: messages as any,
+            tools,
+            tool_choice: "auto"
+          });
+
+          const message = response.choices[0].message;
+          usage = (response.usage as unknown as LLMUsage) || ({} as LLMUsage);
+
+          // Handle tool calls
+          if (message.tool_calls && message.tool_calls.length > 0) {
+            // Execute MCP tools
+            const toolResults = await Promise.all(
+              message.tool_calls.map(async (call: any) => {
+                try {
+                  // Find the MCP server for this tool
+                  const mcpServer = mcpTools.find((m: any) =>
+                    (m.name || m.toolName) === call.function.name
+                  );
+
+                  if (!mcpServer) {
+                    throw new Error(`MCP server not found for tool: ${call.function.name}`);
+                  }
+
+                  // Parse arguments
+                  const args = JSON.parse(call.function.arguments);
+
+                  // Call MCP tool via HTTP
+                  const mcpResponse = await fetch(mcpServer.url, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      ...(mcpServer.authToken && { 'Authorization': `Bearer ${mcpServer.authToken}` })
+                    },
+                    body: JSON.stringify({
+                      jsonrpc: '2.0',
+                      id: Date.now(),
+                      method: 'tools/call',
+                      params: {
+                        name: call.function.name,
+                        arguments: args
+                      }
+                    })
+                  });
+
+                  const result = await mcpResponse.json();
+                  return {
+                    tool_call_id: call.id,
+                    role: "tool" as const,
+                    content: JSON.stringify(result.result || result)
+                  };
+                } catch (error) {
+                  return {
+                    tool_call_id: call.id,
+                    role: "tool" as const,
+                    content: JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' })
+                  };
+                }
+              })
+            );
+
+            // Second call with tool results
+            const finalResponse = await client.chat.completions.create({
+              model: modelName,
+              messages: [
+                ...messages as any,
+                message,
+                ...toolResults
+              ]
+            });
+
+            responseText = finalResponse.choices[0].message.content || '';
+            usage = {
+              ...usage,
+              prompt_tokens: (usage.prompt_tokens || 0) + (finalResponse.usage?.prompt_tokens || 0),
+              completion_tokens: (usage.completion_tokens || 0) + (finalResponse.usage?.completion_tokens || 0),
+              total_tokens: (usage.total_tokens || 0) + (finalResponse.usage?.total_tokens || 0),
+            };
+
+            // Track tool calls
+            toolCalls = message.tool_calls.map((call: any, idx) => ({
+              id: call.id,
+              name: call.function.name,
+              arguments: JSON.parse(call.function.arguments),
+              output: toolResults[idx] ? JSON.parse(toolResults[idx].content) : null
+            }));
+          } else {
+            responseText = message.content || '';
+          }
+        } else {
+          // Regular OpenAI call without MCP tools
+          const { ChatOpenAI } = await import('@langchain/openai');
+          const model = new ChatOpenAI({
+            apiKey: openAIApiKey,
+            model: modelName,
+            ...(apiKeys.openaiBaseUrl ? { configuration: { baseURL: apiKeys.openaiBaseUrl } } : {})
+          });
+
+          const response = await model.invoke(messages);
+          responseText = response.content as string;
+          usage = response.response_metadata?.usage || {};
+        }
+      });
     } else if (provider === 'groq' && apiKeys?.groq) {
       const hasMcpTools = mcpTools && mcpTools.length > 0;
 
-      if (hasMcpTools) {
-        // Use Groq Responses API for MCP support
-        const OpenAI = (await import('openai')).default;
-        const client = new OpenAI({
-          apiKey: apiKeys.groq,
-          baseURL: 'https://api.groq.com/openai/v1',
-        });
-
-        // Convert MCP tools to Groq Responses API format
-        const tools = mcpTools.map((mcp: any) => ({
-          type: "mcp" as const,
-          server_label: mcp.name || mcp.toolName || 'unknown_tool',
-          server_url: mcp.url,
-        }));
-
-        // Use Responses API endpoint for MCP support
-        const response = await client.responses.create({
-          model: modelName,
-          input: messages[messages.length - 1].content as string,
-          tools,
-        } as any);
-
-        responseText = (response as any).output_text || '';
-        usage = (response as any).usage || {};
-
-        // Track tool calls if available
-        const outputs = (response as any).output || [];
-        toolCalls = outputs
-          .filter((o: any) => o.type === 'tool_use')
-          .map((o: any) => ({
-            id: o.id,
-            name: o.name,
-            arguments: o.input,
-            output: null,
-          }));
-      } else {
-        // Regular Groq chat completions for non-MCP calls
-        const { ChatOpenAI } = await import('@langchain/openai');
-        const model = new ChatOpenAI({
-          apiKey: apiKeys.groq,
-          model: modelName,
-          configuration: {
+      await withEnvKeyFallback('groq', apiKeys.groq, async (groqApiKey) => {
+        if (hasMcpTools) {
+          // Use Groq Responses API for MCP support
+          const OpenAI = (await import('openai')).default;
+          const client = new OpenAI({
+            apiKey: groqApiKey,
             baseURL: 'https://api.groq.com/openai/v1',
-          },
-        });
+          });
 
-        const response = await model.invoke(messages);
-        responseText = response.content as string;
-        usage = response.response_metadata?.usage || {};
-      }
+          // Convert MCP tools to Groq Responses API format
+          const tools = mcpTools.map((mcp: any) => ({
+            type: "mcp" as const,
+            server_label: mcp.name || mcp.toolName || 'unknown_tool',
+            server_url: mcp.url,
+          }));
+
+          // Use Responses API endpoint for MCP support
+          const response = await client.responses.create({
+            model: modelName,
+            input: messages[messages.length - 1].content as string,
+            tools,
+          } as any);
+
+          responseText = (response as any).output_text || '';
+          usage = (response as any).usage || {};
+
+          // Track tool calls if available
+          const outputs = (response as any).output || [];
+          toolCalls = outputs
+            .filter((o: any) => o.type === 'tool_use')
+            .map((o: any) => ({
+              id: o.id,
+              name: o.name,
+              arguments: o.input,
+              output: null,
+            }));
+        } else {
+          // Regular Groq chat completions for non-MCP calls
+          const { ChatOpenAI } = await import('@langchain/openai');
+          const model = new ChatOpenAI({
+            apiKey: groqApiKey,
+            model: modelName,
+            configuration: {
+              baseURL: 'https://api.groq.com/openai/v1',
+            },
+          });
+
+          const response = await model.invoke(messages);
+          responseText = response.content as string;
+          usage = response.response_metadata?.usage || {};
+        }
+      });
     } else {
       throw new Error(`No API key available for provider: ${provider}`);
     }
@@ -415,20 +482,29 @@ export async function executeAgentNode(
 
     // User-friendly error messages
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-    if (errorMessage.includes('API key') || errorMessage.includes('api_key')) {
-      throw new Error('Missing API key. Please add your LLM provider key in Settings.');
-    }
-
-    if (errorMessage.includes('rate limit') || errorMessage.includes('429')) {
-      throw new Error('Rate limited. Please wait a moment and try again.');
-    }
+    const lowerError = errorMessage.toLowerCase();
 
     if (errorMessage.includes('No API key available')) {
       throw new Error('No API key configured. Please add an Anthropic, OpenAI, or Groq API key in your .env.local file.');
     }
 
+    if (
+      lowerError.includes('api keys are required') ||
+      lowerError.includes('missing api key') ||
+      lowerError.includes('api key is required') ||
+      lowerError.includes('api_key')
+    ) {
+      throw new Error('Missing API key. Please add your LLM provider key in Settings.');
+    }
+
+    if (isAuthKeyError(error)) {
+      throw new Error('Invalid API key. Update your provider key in Settings → API Keys, or update your .env.local key.');
+    }
+
+    if (lowerError.includes('rate limit') || lowerError.includes('429')) {
+      throw new Error('Rate limited. Please wait a moment and try again.');
+    }
+
     throw new Error(`Agent execution failed: ${errorMessage}`);
   }
 }
-

@@ -759,8 +759,8 @@ export default function NodePanel({
                                   <div className="space-y-6">
                                     <p className="text-xs text-black-alpha-64 font-medium">Available Tools:</p>
                                     <div className="flex flex-wrap gap-4">
-                                      {server.tools.map((tool: string) => (
-                                        <span key={tool} className="px-6 py-2 bg-background-base text-black-alpha-64 rounded-4 text-xs border border-border-faint">
+                                      {server.tools.map((tool: string, toolIndex: number) => (
+                                        <span key={`server-tool-${server._id}-${tool || 'unknown'}-${toolIndex}`} className="px-6 py-2 bg-background-base text-black-alpha-64 rounded-4 text-xs border border-border-faint">
                                           {tool}
                                         </span>
                                       ))}

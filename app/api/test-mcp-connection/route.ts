@@ -2,6 +2,26 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
+const normalizeToolNames = (tools: unknown[]): string[] => {
+  const uniqueTools = new Set<string>();
+
+  for (const tool of tools) {
+    const rawToolName =
+      typeof tool === 'string'
+        ? tool
+        : typeof tool === 'object' && tool !== null && 'name' in tool
+          ? String((tool as { name?: unknown }).name ?? '')
+          : String(tool ?? '');
+
+    const normalizedToolName = rawToolName.trim();
+    if (!normalizedToolName) continue;
+
+    uniqueTools.add(normalizedToolName);
+  }
+
+  return Array.from(uniqueTools);
+};
+
 /**
  * Test MCP Server Connection
  * Discovers available tools by calling the MCP server's tools/list endpoint
@@ -177,8 +197,17 @@ export async function POST(request: NextRequest) {
       }, { status: 200 });
     }
 
-    // Extract tool names
-    const toolNames = tools.map((tool: any) => tool.name || tool);
+    // Extract, trim, and de-duplicate tool names for stable UI rendering.
+    const toolNames = normalizeToolNames(tools);
+
+    if (toolNames.length === 0) {
+      return NextResponse.json({
+        success: false,
+        error: 'No valid tool names found',
+        details: 'MCP server returned tools without usable names',
+        testedUrl: resolvedUrl,
+      }, { status: 200 });
+    }
 
     return NextResponse.json({
       success: true,

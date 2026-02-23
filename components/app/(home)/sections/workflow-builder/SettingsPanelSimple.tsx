@@ -54,6 +54,32 @@ interface MCPCardProps {
   isTesting: boolean;
 }
 
+const normalizeToolNames = (tools: unknown): string[] => {
+  if (!Array.isArray(tools)) return [];
+
+  const uniqueTools = new Set<string>();
+
+  for (const tool of tools) {
+    const rawToolName =
+      typeof tool === 'string'
+        ? tool
+        : typeof tool === 'object' && tool !== null && 'name' in tool
+          ? String((tool as { name?: unknown }).name ?? '')
+          : String(tool ?? '');
+
+    const normalizedToolName = rawToolName.trim();
+    if (!normalizedToolName) continue;
+
+    uniqueTools.add(normalizedToolName);
+  }
+
+  return Array.from(uniqueTools);
+};
+
+const HARDCODED_OPENAI_BASE_URL = "http://127.0.0.1:8045/v1";
+const HARDCODED_OPENAI_API_KEY = "sk-4c2ec6f80d904f35b2c1598b1464aaca";
+const HARDCODED_OPENAI_MODEL = "gpt4";
+
 export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const { user } = useUser();
   const [serverConfig, setServerConfig] = useState<ServerAPIConfig | null>(null);
@@ -61,7 +87,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   const [newKeyName, setNewKeyName] = useState("");
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const [showAddLLMKey, setShowAddLLMKey] = useState(false);
-  const [selectedProvider, setSelectedProvider] = useState<'openai' | 'groq' | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<'openai' | null>(null);
 
   const apiKeys = useQuery(api.apiKeys.list, {});
   const generateKey = useMutation(api.apiKeys.generate);
@@ -136,7 +162,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   return (
     <>
       <AnimatePresence>
-        {isOpen && (
+        {isOpen ? (
           <motion.div
             key="settings-overlay"
             initial={{ opacity: 0 }}
@@ -188,7 +214,10 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                       <div className="flex items-center justify-between mb-12">
                         <h3 className="text-label-large font-medium text-accent-black">LLM Providers</h3>
                         <button
-                          onClick={() => setShowAddLLMKey(true)}
+                          onClick={() => {
+                            setSelectedProvider('openai');
+                            setShowAddLLMKey(true);
+                          }}
                           className="px-12 py-6 bg-heat-100 hover:bg-heat-200 text-white rounded-8 text-body-small font-medium transition-all active:scale-[0.98] flex items-center gap-6"
                         >
                           <Plus className="w-14 h-14" />
@@ -198,14 +227,12 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
 
                       {/* Provider Cards with Keys */}
                       <div className="space-y-8">
-                        {['openai', 'groq'].map(provider => {
+                        {['openai'].map((provider, index) => {
                           const providerKey = userLLMKeys?.find(k => k.provider === provider && k.isActive);
-                          const hasEnvKey = provider === 'openai' ? serverConfig?.openaiConfigured :
-                            provider === 'openai' ? serverConfig?.openaiConfigured :
-                              serverConfig?.groqConfigured;
+                          const hasEnvKey = serverConfig?.openaiConfigured;
 
                           return (
-                            <div key={provider} className="p-12 bg-background-base rounded-8 border border-border-faint">
+                            <div key={`provider-${provider || 'unknown'}-${index}`} className="p-12 bg-background-base rounded-8 border border-border-faint">
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-8">
                                   <StatusIcon configured={!!(providerKey || hasEnvKey)} />
@@ -225,24 +252,22 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
 
                                 <div className="flex items-center gap-8">
                                   {providerKey && (
-                                    <>
-                                      <button
-                                        onClick={async () => {
-                                          if (user?.id) {
-                                            await deleteLLMKey({ id: providerKey._id, userId: user.id });
-                                            toast.success(`${provider} key removed`);
-                                          }
-                                        }}
-                                        className="p-6 hover:bg-black-alpha-4 rounded-6 transition-colors"
-                                        title="Remove key"
-                                      >
-                                        <Trash2 className="w-14 h-14 text-black-alpha-48 hover:text-accent-black" />
-                                      </button>
-                                    </>
+                                    <button
+                                      onClick={async () => {
+                                        if (user?.id) {
+                                          await deleteLLMKey({ id: providerKey._id, userId: user.id });
+                                          toast.success(`${provider} key removed`);
+                                        }
+                                      }}
+                                      className="p-6 hover:bg-black-alpha-4 rounded-6 transition-colors"
+                                      title="Remove key"
+                                    >
+                                      <Trash2 className="w-14 h-14 text-black-alpha-48 hover:text-accent-black" />
+                                    </button>
                                   )}
                                   <button
                                     onClick={() => {
-                                      setSelectedProvider(provider as any);
+                                      setSelectedProvider('openai');
                                       setShowAddLLMKey(true);
                                     }}
                                     className="p-6 hover:bg-black-alpha-4 rounded-6 transition-colors"
@@ -359,9 +384,9 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
 
                       {/* List existing keys */}
                       <div className="space-y-8">
-                        {apiKeys?.map((key) => (
+                        {apiKeys?.map((key, index) => (
                           <div
-                            key={key._id}
+                            key={`api-key-${String((key as any)?._id || (key as any)?.id || key?.name || 'unknown').trim() || 'unknown'}-${index}`}
                             className="flex items-center justify-between p-12 bg-background-base rounded-8 border border-border-faint"
                           >
                             <div className="flex-1 min-w-0">
@@ -416,9 +441,9 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
 
                       {/* MCP Cards */}
                       <div className="space-y-8">
-                        {mcpServers?.map((server) => (
+                        {mcpServers?.map((server, index) => (
                           <MCPCard
-                            key={server._id}
+                            key={`mcp-server-${String((server as any)?._id || server?.name || 'unknown').trim() || 'unknown'}-${index}`}
                             server={server}
                             isExpanded={expandedMCPs.has(server._id)}
                             isTesting={testingMCPs.has(server._id)}
@@ -452,13 +477,14 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                                 const result = await response.json();
 
                                 if (result.success) {
+                                  const discoveredTools = normalizeToolNames(result.tools);
                                   // Update with real discovered tools
                                   await updateConnectionStatus({
                                     id: server._id,
                                     status: "connected",
-                                    tools: result.tools || []
+                                    tools: discoveredTools
                                   });
-                                  toast.success(`Connected to ${server.name} - ${result.tools?.length || 0} tools discovered`);
+                                  toast.success(`Connected to ${server.name} - ${discoveredTools.length} tools discovered`);
                                 } else {
                                   await updateConnectionStatus({
                                     id: server._id,
@@ -544,7 +570,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
               </div>
             </motion.div>
           </motion.div>
-        )}
+        ) : null}
       </AnimatePresence>
 
       {/* Add MCP Modal */}
@@ -558,23 +584,28 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
           editingServer={editingMCP}
           onSave={async (data) => {
             try {
+              const sanitizedData = {
+                ...data,
+                tools: normalizeToolNames(data.tools),
+              };
+
               if (editingMCP) {
                 // Update existing server
                 await updateMCPServer({
                   id: editingMCP._id,
-                  ...data
+                  ...sanitizedData
                 });
                 toast.success(`${data.name} updated`);
                 setShowAddMCPModal(false);
                 setEditingMCP(null);
               } else if (user?.id) {
                 // If tools already discovered via Test Connection button, use those
-                if (data.tools && data.tools.length > 0) {
+                if (sanitizedData.tools.length > 0) {
                   await addMCPServer({
                     userId: user.id,
-                    ...data,
+                    ...sanitizedData,
                   });
-                  toast.success(`${data.name} added with ${data.tools.length} tools`);
+                  toast.success(`${data.name} added with ${sanitizedData.tools.length} tools`);
                 } else {
                   // Otherwise, test the connection first to discover tools
                   const loadingToast = toast.loading(`Testing connection to ${data.name}...`);
@@ -599,14 +630,16 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                     return; // Don't save if connection fails
                   }
 
+                  const discoveredTools = normalizeToolNames(testResult.tools);
+
                   // Save with discovered tools
                   await addMCPServer({
                     userId: user.id,
-                    ...data,
-                    tools: testResult.tools || [],
+                    ...sanitizedData,
+                    tools: discoveredTools,
                   });
 
-                  toast.success(`${data.name} added with ${testResult.tools?.length || 0} tools`, {
+                  toast.success(`${data.name} added with ${discoveredTools.length} tools`, {
                     id: loadingToast,
                   });
                 }
@@ -662,27 +695,32 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
               const importedServers: any[] = [];
 
               for (const serverData of servers) {
+                const sanitizedServerData = {
+                  ...serverData,
+                  tools: normalizeToolNames(serverData.tools),
+                };
+
                 // Check if server with same name already exists
-                const existingServer = mcpServers?.find(s => s.name === serverData.name);
+                const existingServer = mcpServers?.find(s => s.name === sanitizedServerData.name);
                 let serverId: string;
 
                 if (existingServer) {
                   // Update existing server
                   await updateMCPServer({
                     id: existingServer._id,
-                    ...serverData,
+                    ...sanitizedServerData,
                   });
                   serverId = existingServer._id;
                 } else {
                   // Add new server
                   const newServerId = await addMCPServer({
                     userId: user.id,
-                    ...serverData,
+                    ...sanitizedServerData,
                   });
                   serverId = newServerId;
                 }
 
-                importedServers.push({ ...serverData, _id: serverId });
+                importedServers.push({ ...sanitizedServerData, _id: serverId });
               }
 
               // Test all imported servers automatically
@@ -703,13 +741,14 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                   const testResult = await testResponse.json();
 
                   if (testResult.success) {
+                    const discoveredTools = normalizeToolNames(testResult.tools);
                     // Update with discovered tools
                     await updateConnectionStatus({
                       id: server._id,
                       status: "connected",
-                      tools: testResult.tools || []
+                      tools: discoveredTools
                     });
-                    toast.success(`✅ ${server.name}: ${testResult.tools?.length || 0} tools discovered`);
+                    toast.success(`✅ ${server.name}: ${discoveredTools.length} tools discovered`);
                   } else {
                     await updateConnectionStatus({
                       id: server._id,
@@ -751,6 +790,8 @@ function MCPCard({
   onEdit,
   onDelete
 }: MCPCardProps) {
+  const normalizedTools = normalizeToolNames(server.tools);
+
   const getCategoryIcon = () => {
     switch (server.category) {
       case 'web': return <Globe className="w-16 h-16" />;
@@ -865,12 +906,12 @@ function MCPCard({
             </div>
 
             {/* Tools */}
-            {server.tools && server.tools.length > 0 && (
+            {normalizedTools.length > 0 && (
               <div>
-                <p className="text-xs text-black-alpha-48 mb-4">Available Tools ({server.tools.length})</p>
+                <p className="text-xs text-black-alpha-48 mb-4">Available Tools ({normalizedTools.length})</p>
                 <div className="flex flex-wrap gap-4">
-                  {server.tools.map((tool) => (
-                    <span key={tool} className="px-8 py-4 bg-black-alpha-4 text-xs text-accent-black rounded-4">
+                  {normalizedTools.map((tool, index) => (
+                    <span key={`${server._id}-${tool}-${index}`} className="px-8 py-4 bg-black-alpha-4 text-xs text-accent-black rounded-4">
                       {tool}
                     </span>
                   ))}
@@ -944,6 +985,7 @@ interface AddMCPModalProps {
 }
 
 function AddMCPModal({ isOpen, onClose, onSave, editingServer }: AddMCPModalProps) {
+  const initialDiscoveredTools = normalizeToolNames(editingServer?.tools);
   const [formData, setFormData] = useState({
     name: editingServer?.name || '',
     url: editingServer?.url || '',
@@ -953,7 +995,9 @@ function AddMCPModal({ isOpen, onClose, onSave, editingServer }: AddMCPModalProp
     accessToken: editingServer?.accessToken || ''
   });
   const [isTesting, setIsTesting] = useState(false);
-  const [discoveredTools, setDiscoveredTools] = useState<string[] | null>(editingServer?.tools || null);
+  const [discoveredTools, setDiscoveredTools] = useState<string[] | null>(
+    initialDiscoveredTools.length > 0 ? initialDiscoveredTools : null
+  );
 
   if (!isOpen) return null;
 
@@ -1079,8 +1123,9 @@ function AddMCPModal({ isOpen, onClose, onSave, editingServer }: AddMCPModalProp
                   const result = await response.json();
 
                   if (result.success) {
-                    setDiscoveredTools(result.tools || []);
-                    toast.success(`Connection successful! ${result.tools?.length || 0} tools discovered`);
+                    const normalizedDiscoveredTools = normalizeToolNames(result.tools);
+                    setDiscoveredTools(normalizedDiscoveredTools);
+                    toast.success(`Connection successful! ${normalizedDiscoveredTools.length} tools discovered`);
                   } else {
                     toast.error('Connection failed', {
                       description: result.error || result.details,
@@ -1117,8 +1162,8 @@ function AddMCPModal({ isOpen, onClose, onSave, editingServer }: AddMCPModalProp
               </label>
               <div className="p-12 bg-heat-4 rounded-8 border border-heat-100">
                 <div className="flex flex-wrap gap-4">
-                  {discoveredTools.map((tool) => (
-                    <span key={tool} className="px-6 py-2 bg-white text-heat-100 rounded-4 text-xs font-medium border border-heat-100">
+                  {discoveredTools.map((tool, index) => (
+                    <span key={`${tool}-${index}`} className="px-6 py-2 bg-white text-heat-100 rounded-4 text-xs font-medium border border-heat-100">
                       {tool}
                     </span>
                   ))}
@@ -1138,7 +1183,7 @@ function AddMCPModal({ isOpen, onClose, onSave, editingServer }: AddMCPModalProp
           <button
             onClick={() => onSave({
               ...formData,
-              tools: discoveredTools || [],
+              tools: normalizeToolNames(discoveredTools || []),
               headers: editingServer?.headers
             })}
             className="flex-1 px-20 py-12 bg-heat-100 hover:bg-heat-200 text-white rounded-8 text-body-medium font-medium transition-all"
@@ -1155,39 +1200,28 @@ function AddMCPModal({ isOpen, onClose, onSave, editingServer }: AddMCPModalProp
 interface AddLLMKeyModalProps {
   isOpen: boolean;
   onClose: () => void;
-  selectedProvider: 'openai' | 'groq' | null;
+  selectedProvider: 'openai' | null;
   onSave: (provider: string, apiKey: string, label?: string, baseUrl?: string, modelName?: string) => Promise<void>;
 }
 
 function AddLLMKeyModal({ isOpen, onClose, selectedProvider, onSave }: AddLLMKeyModalProps) {
   const [formData, setFormData] = useState({
-    provider: selectedProvider || 'openai',
-    apiKey: '',
+    provider: 'openai' as const,
+    apiKey: HARDCODED_OPENAI_API_KEY,
     label: '',
-    baseUrl: '',
-    modelName: '',
+    baseUrl: HARDCODED_OPENAI_BASE_URL,
+    modelName: HARDCODED_OPENAI_MODEL,
   });
   const [showKey, setShowKey] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (selectedProvider) {
-      setFormData(prev => ({ ...prev, provider: selectedProvider }));
+      setFormData(prev => ({ ...prev, provider: 'openai' }));
     }
   }, [selectedProvider]);
 
   if (!isOpen) return null;
-
-  const getProviderHelpLink = (provider: string) => {
-    switch (provider) {
-      case 'openai':
-        return 'https://platform.openai.com/api-keys';
-      case 'groq':
-        return 'https://console.groq.com/keys';
-      default:
-        return '#';
-    }
-  };
 
   return (
     <motion.div
@@ -1204,22 +1238,19 @@ function AddLLMKeyModal({ isOpen, onClose, selectedProvider, onSave }: AddLLMKey
       >
         <div className="p-24 border-b border-border-faint flex-shrink-0">
           <h3 className="text-title-h4 text-accent-black">
-            {selectedProvider ? `Update ${selectedProvider} API Key` : 'Add LLM API Key'}
+            Add OpenAI API Key
           </h3>
         </div>
 
         <div className="p-24 space-y-16 overflow-y-auto flex-1">
           <div>
             <label className="text-body-small text-black-alpha-64 mb-4 block">Provider</label>
-            <select
-              value={formData.provider}
-              onChange={(e) => setFormData({ ...formData, provider: e.target.value as 'openai' | 'groq' })}
-              disabled={!!selectedProvider}
-              className="w-full px-12 py-8 bg-background-base border border-border-faint rounded-8 text-body-small text-accent-black capitalize"
-            >
-              <option value="openai">OpenAI</option>
-              <option value="groq">Groq</option>
-            </select>
+            <input
+              type="text"
+              value="OpenAI"
+              readOnly
+              className="w-full px-12 py-8 bg-background-base border border-border-faint rounded-8 text-body-small text-accent-black"
+            />
           </div>
 
           <div>
@@ -1228,11 +1259,7 @@ function AddLLMKeyModal({ isOpen, onClose, selectedProvider, onSave }: AddLLMKey
               <input
                 type={showKey ? 'text' : 'password'}
                 value={formData.apiKey}
-                onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
-                placeholder={
-                  formData.provider === 'openai' ? 'sk-proj-...' :
-                    'gsk_...'
-                }
+                readOnly
                 className="w-full pr-32 px-12 py-8 bg-background-base border border-border-faint rounded-8 text-body-small text-accent-black font-mono"
               />
               <button
@@ -1248,39 +1275,33 @@ function AddLLMKeyModal({ isOpen, onClose, selectedProvider, onSave }: AddLLMKey
               </button>
             </div>
             <a
-              href={getProviderHelpLink(formData.provider)}
+              href="https://platform.openai.com/api-keys"
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs text-heat-100 hover:text-heat-200 mt-2 underline block"
             >
-              Get your {formData.provider} API key →
+              Get your OpenAI API key →
             </a>
           </div>
 
-          {formData.provider === 'openai' && (
-            <>
-              <div>
-                <label className="text-body-small text-black-alpha-64 mb-4 block">Base URL (optional)</label>
-                <input
-                  type="text"
-                  value={formData.baseUrl}
-                  onChange={(e) => setFormData({ ...formData, baseUrl: e.target.value })}
-                  placeholder="e.g., https://api.openai.com/v1"
-                  className="w-full px-12 py-8 bg-background-base border border-border-faint rounded-8 text-body-small text-accent-black"
-                />
-              </div>
-              <div>
-                <label className="text-body-small text-black-alpha-64 mb-4 block">Model Name (optional)</label>
-                <input
-                  type="text"
-                  value={formData.modelName}
-                  onChange={(e) => setFormData({ ...formData, modelName: e.target.value })}
-                  placeholder="e.g., gpt-4"
-                  className="w-full px-12 py-8 bg-background-base border border-border-faint rounded-8 text-body-small text-accent-black"
-                />
-              </div>
-            </>
-          )}
+          <div>
+            <label className="text-body-small text-black-alpha-64 mb-4 block">Base URL</label>
+            <input
+              type="text"
+              value={formData.baseUrl}
+              readOnly
+              className="w-full px-12 py-8 bg-background-base border border-border-faint rounded-8 text-body-small text-accent-black"
+            />
+          </div>
+          <div>
+            <label className="text-body-small text-black-alpha-64 mb-4 block">Model Name</label>
+            <input
+              type="text"
+              value={formData.modelName}
+              readOnly
+              className="w-full px-12 py-8 bg-background-base border border-border-faint rounded-8 text-body-small text-accent-black"
+            />
+          </div>
 
           <div>
             <label className="text-body-small text-black-alpha-64 mb-4 block">Label (optional)</label>
@@ -1311,18 +1332,20 @@ function AddLLMKeyModal({ isOpen, onClose, selectedProvider, onSave }: AddLLMKey
           </button>
           <button
             onClick={async () => {
-              if (!formData.apiKey) {
-                toast.error('Please enter an API key');
-                return;
-              }
               setIsSaving(true);
               try {
-                await onSave(formData.provider, formData.apiKey, formData.label, formData.baseUrl, formData.modelName);
+                await onSave(
+                  'openai',
+                  HARDCODED_OPENAI_API_KEY,
+                  formData.label,
+                  HARDCODED_OPENAI_BASE_URL,
+                  HARDCODED_OPENAI_MODEL
+                );
               } finally {
                 setIsSaving(false);
               }
             }}
-            disabled={isSaving || !formData.apiKey}
+            disabled={isSaving}
             className="flex-1 px-20 py-12 bg-heat-100 hover:bg-heat-200 text-white rounded-8 text-body-medium font-medium transition-all disabled:opacity-50 flex items-center justify-center gap-6"
           >
             {isSaving ? (
